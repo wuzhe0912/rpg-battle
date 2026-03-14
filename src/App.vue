@@ -1,10 +1,8 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
-
-// ============================================
-// RPG Battle Game - V1 (everything in one file)
-// TODO: this is getting messy, should refactor later...
-// ============================================
+import { ref, nextTick } from 'vue'
+import PlayerCard from './components/PlayerCard.vue'
+import MonsterCard from './components/MonsterCard.vue'
+import BattleLog from './components/BattleLog.vue'
 
 // ----- Player state -----
 const playerName = ref('勇者')
@@ -17,8 +15,6 @@ const isDefending = ref(false)
 const playerShake = ref(false)
 const monstersKilled = ref(0)
 
-// weapon stuff - sword is default
-// TODO: this weapon system is a mess, should use objects or something
 const currentWeapon = ref('sword')
 const weapons = ref(['sword'])
 
@@ -40,7 +36,6 @@ const lootMessage = ref('')
 const monsterNames = ['哥布林', '史萊姆', '骷髏兵', '暗影狼', '毒蜘蛛', '石像鬼', '火焰蜥蜴']
 
 // ----- Loot table -----
-// TODO: should probably be a map or something
 const lootTable = [
   { name: '鏽蝕短弓', type: 'bow' },
   { name: '魔法書・初級', type: 'magic' },
@@ -49,24 +44,6 @@ const lootTable = [
   { name: '火焰法杖', type: 'magic' },
   { name: '獵人長弓', type: 'bow' },
 ]
-
-// HP bar percentages - computed
-const playerHpPercent = computed(() => {
-  return Math.max(0, (playerHp.value / playerMaxHp.value) * 100)
-})
-const monsterHpPercent = computed(() => {
-  if (monsterMaxHp.value === 0) return 0
-  return Math.max(0, (monsterHp.value / monsterMaxHp.value) * 100)
-})
-
-// HP bar colors - yeah I know this is duplicated
-function getHpColor(percent) {
-  if (percent > 60) return '#4ecca3'
-  if (percent > 30) return '#f0c040'
-  return '#e74c3c'
-}
-const playerHpColor = computed(() => getHpColor(playerHpPercent.value))
-const monsterHpColor = computed(() => getHpColor(monsterHpPercent.value))
 
 // ----- Helper: random int -----
 function randomInt(min, max) {
@@ -88,7 +65,6 @@ function spawnMonster() {
 // ----- Add to battle log -----
 function addLog(msg) {
   battleLog.value.push(msg)
-  // auto scroll - TODO: this is hacky
   nextTick(() => {
     const el = document.querySelector('.battle-log')
     if (el) el.scrollTop = el.scrollHeight
@@ -96,24 +72,19 @@ function addLog(msg) {
 }
 
 // ----- Calculate player attack damage -----
-// TODO: this if/else chain is getting out of hand
 function calcPlayerDamage() {
   let dmg = 0
   let weaponText = ''
 
   if (currentWeapon.value === 'sword') {
-    // sword: balanced, ATK range based on base
     dmg = randomInt(playerBaseAtk.value - 2, playerBaseAtk.value + 3)
     weaponText = '揮劍攻擊'
   } else if (currentWeapon.value === 'bow') {
-    // bow: high ceiling but can miss badly
     const roll = randomInt(1, 100)
     if (roll <= 20) {
-      // miss!
       dmg = randomInt(1, 3)
       weaponText = '箭矢偏離'
     } else if (roll >= 80) {
-      // crit
       dmg = randomInt(playerBaseAtk.value + 5, playerBaseAtk.value + 10)
       weaponText = '精準射擊！'
     } else {
@@ -121,11 +92,9 @@ function calcPlayerDamage() {
       weaponText = '射出箭矢'
     }
   } else if (currentWeapon.value === 'magic') {
-    // magic: ignores some DEF (applied later), medium damage
     dmg = randomInt(playerBaseAtk.value - 3, playerBaseAtk.value + 2)
     weaponText = '釋放魔法'
   } else {
-    // fallback??? shouldn't happen
     dmg = randomInt(10, 15)
     weaponText = '攻擊'
   }
@@ -140,41 +109,32 @@ function doAttack() {
   isDefending.value = false
   const { dmg, weaponText } = calcPlayerDamage()
 
-  // apply damage to monster
-  // TODO: monster DEF? maybe later...
   monsterHp.value = Math.max(0, monsterHp.value - dmg)
   addLog(`${playerName.value} ${weaponText}，造成 ${dmg} 點傷害！`)
 
-  // shake animation
   monsterShake.value = true
   setTimeout(() => { monsterShake.value = false }, 300)
 
-  // check if monster dead
   if (monsterHp.value <= 0) {
     monstersKilled.value++
     addLog(`${monsterName.value} 被擊敗了！`)
-    // loot drop - 50% chance
     if (Math.random() < 0.5) {
       const loot = lootTable[randomInt(0, lootTable.length - 1)]
-      // check if already have this weapon type
       if (!weapons.value.includes(loot.type)) {
         weapons.value.push(loot.type)
         lootMessage.value = `獲得了 ${loot.name}！（${loot.type === 'bow' ? '弓' : loot.type === 'magic' ? '魔法' : '劍'}系武器）`
       } else {
-        // already have it, give a potion instead
         potions.value++
         lootMessage.value = `獲得了 ${loot.name}...但已經有同類武器了，轉化為藥水 x1`
       }
       showLoot.value = true
       addLog(lootMessage.value)
     } else {
-      // no loot, just spawn next
       setTimeout(() => spawnMonster(), 800)
     }
     return
   }
 
-  // monster turn
   setTimeout(() => monsterTurn(), 500)
 }
 
@@ -183,14 +143,8 @@ function monsterTurn() {
   if (gameOver.value) return
 
   let rawDmg = randomInt(monsterAtk.value - 2, monsterAtk.value + 2)
-
-  // apply player DEF
   let actualDmg = rawDmg - playerDef.value
 
-  // magic weapon type ignores DEF partially (but this is for monster hitting player, so irrelevant)
-  // wait no, DEF is player's defense... ok this is fine
-
-  // defending halves damage
   if (isDefending.value) {
     actualDmg = Math.floor(actualDmg * 0.5)
     addLog(`${playerName.value} 的防禦姿態減輕了傷害！`)
@@ -202,11 +156,9 @@ function monsterTurn() {
 
   addLog(`${monsterName.value} 攻擊了 ${playerName.value}，造成 ${actualDmg} 點傷害`)
 
-  // player shake
   playerShake.value = true
   setTimeout(() => { playerShake.value = false }, 300)
 
-  // check death
   if (playerHp.value <= 0) {
     gameOver.value = true
     addLog(`${playerName.value} 倒下了... 遊戲結束`)
@@ -235,13 +187,10 @@ function usePotion() {
   playerHp.value = Math.min(playerMaxHp.value, playerHp.value + heal)
   const actualHeal = playerHp.value - oldHp
   addLog(`${playerName.value} 使用藥水，回復 ${actualHeal} HP！（剩餘 ${potions.value} 瓶）`)
-
-  // monster still attacks after potion use
   setTimeout(() => monsterTurn(), 500)
 }
 
 // ----- Weapon switch -----
-// TODO: this is ugly, repeating weapon type checks everywhere
 function switchWeapon(type) {
   if (!weapons.value.includes(type)) return
   currentWeapon.value = type
@@ -282,14 +231,6 @@ function restartGame() {
   gameStarted.value = false
   showLoot.value = false
 }
-
-// weapon display name helper - TODO: repeated logic again...
-function weaponDisplayName(type) {
-  if (type === 'sword') return '⚔️ 劍'
-  if (type === 'bow') return '🏹 弓'
-  if (type === 'magic') return '🔮 魔法'
-  return type
-}
 </script>
 
 <template>
@@ -308,88 +249,35 @@ function weaponDisplayName(type) {
     </div>
 
     <div class="battle-field">
-      <!-- Player card -->
-      <div class="card player-card" :class="{ shake: playerShake }">
-        <div class="card-header">
-          <h2>{{ playerName }}</h2>
-          <span class="weapon-badge">{{ weaponDisplayName(currentWeapon) }}</span>
-        </div>
-        <div class="hp-section">
-          <div class="hp-text">HP: {{ playerHp }} / {{ playerMaxHp }}</div>
-          <div class="hp-bar-bg">
-            <div
-              class="hp-bar-fill"
-              :style="{
-                width: playerHpPercent + '%',
-                backgroundColor: playerHpColor,
-                transition: 'width 0.3s, background-color 0.3s'
-              }"
-            ></div>
-          </div>
-        </div>
-        <div class="card-stats">
-          <span>ATK: {{ playerBaseAtk }}</span>
-          <span>DEF: {{ playerDef }}</span>
-        </div>
-        <div v-if="isDefending" class="defending-badge">🛡️ 防禦中</div>
-        <div class="sprite player-sprite">🧙</div>
-      </div>
+      <!-- Player card (component) -->
+      <PlayerCard
+        :name="playerName"
+        :hp="playerHp"
+        :max-hp="playerMaxHp"
+        :base-atk="playerBaseAtk"
+        :def="playerDef"
+        :current-weapon="currentWeapon"
+        :weapons="weapons"
+        :potions="potions"
+        :is-defending="isDefending"
+        :shake="playerShake"
+        @attack="doAttack"
+        @defend="doDefend"
+        @use-potion="usePotion"
+        @switch-weapon="switchWeapon"
+      />
 
       <!-- VS -->
       <div class="vs-divider">VS</div>
 
-      <!-- Monster card -->
-      <div class="card monster-card" :class="{ shake: monsterShake }">
-        <div class="card-header">
-          <h2>{{ monsterName }}</h2>
-        </div>
-        <div class="hp-section">
-          <div class="hp-text">HP: {{ monsterHp }} / {{ monsterMaxHp }}</div>
-          <div class="hp-bar-bg">
-            <div
-              class="hp-bar-fill"
-              :style="{
-                width: monsterHpPercent + '%',
-                backgroundColor: monsterHpColor,
-                transition: 'width 0.3s, background-color 0.3s'
-              }"
-            ></div>
-          </div>
-        </div>
-        <div class="card-stats">
-          <span>ATK: {{ monsterAtk }}</span>
-        </div>
-        <div class="sprite monster-sprite">👹</div>
-      </div>
-    </div>
-
-    <!-- Weapon selector -->
-    <div class="weapon-selector" v-if="weapons.length > 1">
-      <span class="weapon-label">武器切換：</span>
-      <button
-        v-for="w in weapons"
-        :key="w"
-        class="btn btn-weapon"
-        :class="{ active: currentWeapon === w }"
-        @click="switchWeapon(w)"
-        :disabled="gameOver"
-      >
-        {{ weaponDisplayName(w) }}
-      </button>
-    </div>
-
-    <!-- Action buttons -->
-    <div class="actions" v-if="!gameOver && !showLoot">
-      <button class="btn btn-attack" @click="doAttack">⚔️ 攻擊</button>
-      <button class="btn btn-defend" @click="doDefend">🛡️ 防禦</button>
-      <button
-        class="btn btn-potion"
-        @click="usePotion"
-        :disabled="potions <= 0"
-        :style="potions <= 0 ? 'opacity: 0.4; cursor: not-allowed' : ''"
-      >
-        🧪 藥水 ({{ potions }})
-      </button>
+      <!-- Monster card (component) -->
+      <MonsterCard
+        :name="monsterName"
+        :hp="monsterHp"
+        :max-hp="monsterMaxHp"
+        :atk="monsterAtk"
+        :shake="monsterShake"
+      />
     </div>
 
     <!-- Loot popup -->
@@ -405,23 +293,12 @@ function weaponDisplayName(type) {
       <button class="btn btn-restart" @click="restartGame">重新開始</button>
     </div>
 
-    <!-- Battle log -->
-    <div class="battle-log">
-      <div class="log-title">📜 戰鬥紀錄</div>
-      <div v-for="(log, i) in battleLog" :key="i" class="log-entry">
-        {{ log }}
-      </div>
-      <div v-if="battleLog.length === 0" class="log-empty">等待冒險開始...</div>
-    </div>
+    <!-- Battle log (component) -->
+    <BattleLog :logs="battleLog" />
   </div>
 </template>
 
 <style scoped>
-/* =============================================
-   RPG Battle - V1 styles (all in one file lol)
-   TODO: this CSS is getting really long...
-   ============================================= */
-
 .title-screen {
   display: flex;
   flex-direction: column;
@@ -460,7 +337,6 @@ function weaponDisplayName(type) {
   color: #aaa;
 }
 
-/* ----- Battle field layout ----- */
 .battle-field {
   display: flex;
   align-items: center;
@@ -475,143 +351,6 @@ function weaponDisplayName(type) {
   color: #e74c3c;
   text-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
   flex-shrink: 0;
-}
-
-/* ----- Cards ----- */
-.card {
-  background: #16213e;
-  border: 2px solid #0f3460;
-  border-radius: 12px;
-  padding: 1.2rem;
-  width: 280px;
-  position: relative;
-}
-
-.player-card {
-  border-color: #4ecca3;
-}
-
-.monster-card {
-  border-color: #e74c3c;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.8rem;
-}
-
-.card-header h2 {
-  font-size: 1.3rem;
-  margin: 0;
-}
-
-.weapon-badge {
-  font-size: 0.75rem;
-  background: rgba(78, 204, 163, 0.2);
-  padding: 2px 8px;
-  border-radius: 4px;
-  color: #4ecca3;
-}
-
-.hp-section {
-  margin-bottom: 0.6rem;
-}
-
-.hp-text {
-  font-size: 0.85rem;
-  margin-bottom: 4px;
-  color: #ccc;
-}
-
-.hp-bar-bg {
-  width: 100%;
-  height: 14px;
-  background: #0a0a1a;
-  border-radius: 7px;
-  overflow: hidden;
-}
-
-.hp-bar-fill {
-  height: 100%;
-  border-radius: 7px;
-}
-
-.card-stats {
-  display: flex;
-  gap: 1rem;
-  font-size: 0.8rem;
-  color: #999;
-  margin-bottom: 0.5rem;
-}
-
-.defending-badge {
-  font-size: 0.8rem;
-  color: #4ecdc4;
-  margin-bottom: 0.3rem;
-}
-
-.sprite {
-  text-align: center;
-  font-size: 2.5rem;
-  margin-top: 0.3rem;
-}
-
-/* ----- Shake animation ----- */
-.shake {
-  animation: shake 0.3s ease-in-out;
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-8px); }
-  40% { transform: translateX(8px); }
-  60% { transform: translateX(-5px); }
-  80% { transform: translateX(5px); }
-}
-
-/* ----- Weapon selector ----- */
-.weapon-selector {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  justify-content: center;
-}
-
-.weapon-label {
-  font-size: 0.85rem;
-  color: #888;
-}
-
-.btn-weapon {
-  background: #16213e;
-  border: 1px solid #0f3460;
-  color: #ccc;
-  padding: 4px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.2s;
-}
-
-.btn-weapon.active {
-  border-color: #4ecca3;
-  color: #4ecca3;
-  background: rgba(78, 204, 163, 0.1);
-}
-
-.btn-weapon:hover:not(:disabled) {
-  border-color: #4ecca3;
-}
-
-/* ----- Action buttons ----- */
-.actions {
-  display: flex;
-  gap: 0.8rem;
-  justify-content: center;
-  margin-bottom: 1.5rem;
 }
 
 .btn {
@@ -639,21 +378,6 @@ function weaponDisplayName(type) {
   padding: 1rem 2.5rem;
 }
 
-.btn-attack {
-  background: #e74c3c;
-  color: white;
-}
-
-.btn-defend {
-  background: #3498db;
-  color: white;
-}
-
-.btn-potion {
-  background: #2ecc71;
-  color: white;
-}
-
 .btn-continue {
   background: #f39c12;
   color: #1a1a2e;
@@ -665,7 +389,6 @@ function weaponDisplayName(type) {
   margin-top: 0.5rem;
 }
 
-/* ----- Loot popup ----- */
 .loot-popup {
   text-align: center;
   padding: 1.2rem;
@@ -681,7 +404,6 @@ function weaponDisplayName(type) {
   color: #f39c12;
 }
 
-/* ----- Game over ----- */
 .game-over {
   text-align: center;
   padding: 1.5rem;
@@ -699,51 +421,5 @@ function weaponDisplayName(type) {
 .game-over p {
   color: #ccc;
   margin-bottom: 0.8rem;
-}
-
-/* ----- Battle log ----- */
-.battle-log {
-  background: #0a0a1a;
-  border: 1px solid #16213e;
-  border-radius: 10px;
-  padding: 1rem;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.log-title {
-  font-size: 0.9rem;
-  color: #4ecca3;
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-}
-
-.log-entry {
-  font-size: 0.8rem;
-  color: #aaa;
-  padding: 2px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
-}
-
-.log-entry:last-child {
-  border-bottom: none;
-}
-
-.log-empty {
-  font-size: 0.8rem;
-  color: #555;
-  font-style: italic;
-}
-
-/* scrollbar styling */
-.battle-log::-webkit-scrollbar {
-  width: 6px;
-}
-.battle-log::-webkit-scrollbar-track {
-  background: #0a0a1a;
-}
-.battle-log::-webkit-scrollbar-thumb {
-  background: #16213e;
-  border-radius: 3px;
 }
 </style>
