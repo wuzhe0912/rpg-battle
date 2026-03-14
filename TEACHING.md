@@ -1,79 +1,68 @@
-# V2 — 元件化重構
+# V3 — Composable + 策略模式
 
 ## 這個版本做了什麼？
 
-從 V1 的單一檔案，拆分出三個 Vue 元件。功能不變，只改結構。
+V2 拆了 UI，V3 拆邏輯。把玩家和怪物的狀態與行為封裝成 composable，武器系統改用策略模式。
 
 ## 檔案結構
 
 ```
 src/
-├── App.vue                  ← 邏輯 + 協調元件
-└── components/
-    ├── PlayerCard.vue       ← 玩家卡片 UI + 操作按鈕
-    ├── MonsterCard.vue      ← 怪物卡片 UI（純展示）
-    └── BattleLog.vue        ← 戰鬥日誌（純展示）
+├── App.vue                  ← 純協調：串接 composable 和元件
+├── components/
+│   ├── PlayerCard.vue       ← 不變
+│   ├── MonsterCard.vue      ← 不變
+│   └── BattleLog.vue        ← 不變
+├── composables/
+│   ├── usePlayer.js         ← 玩家狀態 + 所有玩家行為
+│   └── useMonster.js        ← 怪物狀態 + 生成/攻擊/受傷
+└── strategies/
+    └── weapons.js           ← 武器策略物件（取代 if/else）
 ```
 
 ## 教學重點
 
-### 1. 關注點分離（Separation of Concerns）
+### 1. 策略模式（Strategy Pattern）
 
-每個元件只管自己的事。MonsterCard 只管顯示怪物資訊，不需要知道玩家的攻擊力怎麼算。
-
-### 2. Props Down, Events Up
-
-- **Props**：父元件（App.vue）透過 props 把資料傳給子元件
-- **Emit**：子元件透過 emit 把事件通知父元件
-
-### 3. 元件複雜度的光譜
-
-| 元件 | Props | Emit | 複雜度 |
-|------|-------|------|--------|
-| BattleLog | logs 陣列 | 無 | 最簡單：純展示 |
-| MonsterCard | name/hp/atk 等 | 無 | 簡單：有 computed 但無互動 |
-| PlayerCard | 全部屬性 | attack/defend/use-potion/switch-weapon | 最複雜：有互動 |
-
-### 4. 如何 import 元件回 App.vue
-
-在 `<script setup>` 中 import：
+Before（V1/V2 的 if/else）：
 
 ```js
-import PlayerCard from './components/PlayerCard.vue'
-import MonsterCard from './components/MonsterCard.vue'
-import BattleLog from './components/BattleLog.vue'
+if (weapon === 'sword') { ... }
+else if (weapon === 'bow') { ... }
+else if (weapon === 'magic') { ... }
+// 加新武器 = 加 else if + 到處改
 ```
 
-在 `<template>` 中用元件標籤取代原本的 HTML：
+After（V3 的策略物件）：
 
-```vue
-<PlayerCard
-  :name="playerName"
-  :hp="playerHp"
-  @attack="doAttack"
-  @defend="doDefend"
-/>
-
-<MonsterCard
-  :name="monsterName"
-  :hp="monsterHp"
-  :max-hp="monsterMaxHp"
-  :atk="monsterAtk"
-  :shake="monsterShake"
-/>
-
-<BattleLog :logs="battleLog" />
+```js
+const strategy = weaponStrategies[currentWeapon]
+const { dmg, text } = strategy.calcDamage(baseAtk)
+// 加新武器 = 加一個物件，其他地方不用動
 ```
 
-## Commit 紀錄
+### 2. Composable = 邏輯打包
 
-每個 commit 對應一個元件的抽出，可以用 `git log` 查看每步做了什麼：
+把相關的 ref + function 包成一個可重用的函式：
 
-1. 抽出 PlayerCard — 學習 defineProps + defineEmits
-2. 抽出 MonsterCard — 學習純展示元件（只有 props）
-3. 抽出 BattleLog — 學習最簡單的 props-only 元件
-4. 整合回 App.vue — 學習 import + props/emit 串聯
+```js
+const player = usePlayer()
+// player.hp, player.calcDamage(), player.takeDamage()...
+```
+
+App.vue 從二三十個 ref 變成兩行。
+
+### 3. V1 vs V2 vs V3 對比
+
+| | V1 | V2 | V3 |
+|---|---|---|---|
+| 檔案數 | 1 | 4 | 7 |
+| App.vue 角色 | 什麼都幹 | 邏輯 + 協調 | 純協調 |
+| 加新武器 | 改 if/else | 改 if/else | 加一個物件 |
+| 找怪物邏輯 | 搜尋 750 行 | 搜尋 App.vue | 開 useMonster.js |
 
 ## 觀眾帶走什麼？
 
-學會用 Vue 元件拆分 UI，理解 props/emit 的父子元件通訊模式。
+1. Composable 是 Vue 3 的邏輯封裝工具
+2. 策略模式用物件取代 if/else，讓程式碼更好擴充
+3. 重構不改功能，只改結構——使用者感受不到差異，但開發者的體驗天差地別
