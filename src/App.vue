@@ -3,27 +3,13 @@ import { ref, nextTick } from 'vue'
 import PlayerCard from './components/PlayerCard.vue'
 import MonsterCard from './components/MonsterCard.vue'
 import BattleLog from './components/BattleLog.vue'
+import { usePlayer } from './composables/usePlayer.js'
+import { useMonster } from './composables/useMonster.js'
+import { weaponStrategies } from './strategies/weapons.js'
 
-// ----- Player state -----
-const playerName = ref('勇者')
-const playerHp = ref(100)
-const playerMaxHp = ref(100)
-const playerBaseAtk = ref(12)
-const playerDef = ref(5)
-const potions = ref(3)
-const isDefending = ref(false)
-const playerShake = ref(false)
-const monstersKilled = ref(0)
-
-const currentWeapon = ref('sword')
-const weapons = ref(['sword'])
-
-// ----- Monster state -----
-const monsterName = ref('')
-const monsterHp = ref(0)
-const monsterMaxHp = ref(0)
-const monsterAtk = ref(0)
-const monsterShake = ref(false)
+// ----- Composables -----
+const player = usePlayer()
+const monster = useMonster()
 
 // ----- Game state -----
 const battleLog = ref([])
@@ -31,9 +17,6 @@ const gameOver = ref(false)
 const gameStarted = ref(false)
 const showLoot = ref(false)
 const lootMessage = ref('')
-
-// ----- Monster names -----
-const monsterNames = ['哥布林', '史萊姆', '骷髏兵', '暗影狼', '毒蜘蛛', '石像鬼', '火焰蜥蜴']
 
 // ----- Loot table -----
 const lootTable = [
@@ -45,21 +28,8 @@ const lootTable = [
   { name: '獵人長弓', type: 'bow' },
 ]
 
-// ----- Helper: random int -----
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min
-}
-
-// ----- Spawn a new monster -----
-function spawnMonster() {
-  const idx = randomInt(0, monsterNames.length - 1)
-  monsterName.value = monsterNames[idx]
-  const hp = randomInt(50, 80)
-  monsterHp.value = hp
-  monsterMaxHp.value = hp
-  monsterAtk.value = randomInt(5, 10)
-  showLoot.value = false
-  addLog(`--- 野生的 ${monsterName.value} 出現了！HP: ${hp} ---`)
 }
 
 // ----- Add to battle log -----
@@ -71,161 +41,117 @@ function addLog(msg) {
   })
 }
 
-// ----- Calculate player attack damage -----
-function calcPlayerDamage() {
-  let dmg = 0
-  let weaponText = ''
-
-  if (currentWeapon.value === 'sword') {
-    dmg = randomInt(playerBaseAtk.value - 2, playerBaseAtk.value + 3)
-    weaponText = '揮劍攻擊'
-  } else if (currentWeapon.value === 'bow') {
-    const roll = randomInt(1, 100)
-    if (roll <= 20) {
-      dmg = randomInt(1, 3)
-      weaponText = '箭矢偏離'
-    } else if (roll >= 80) {
-      dmg = randomInt(playerBaseAtk.value + 5, playerBaseAtk.value + 10)
-      weaponText = '精準射擊！'
-    } else {
-      dmg = randomInt(playerBaseAtk.value - 1, playerBaseAtk.value + 5)
-      weaponText = '射出箭矢'
-    }
-  } else if (currentWeapon.value === 'magic') {
-    dmg = randomInt(playerBaseAtk.value - 3, playerBaseAtk.value + 2)
-    weaponText = '釋放魔法'
-  } else {
-    dmg = randomInt(10, 15)
-    weaponText = '攻擊'
-  }
-
-  return { dmg: Math.max(1, dmg), weaponText }
+// ----- Spawn monster -----
+function spawnMonster() {
+  const info = monster.spawn()
+  showLoot.value = false
+  addLog(`--- 野生的 ${info.name} 出現了！HP: ${info.hp} ---`)
 }
 
-// ----- Player attack action -----
+// ----- Player attack -----
 function doAttack() {
   if (gameOver.value || showLoot.value) return
 
-  isDefending.value = false
-  const { dmg, weaponText } = calcPlayerDamage()
+  player.isDefending.value = false
+  const { dmg, text } = player.calcDamage()
 
-  monsterHp.value = Math.max(0, monsterHp.value - dmg)
-  addLog(`${playerName.value} ${weaponText}，造成 ${dmg} 點傷害！`)
+  const isDead = monster.takeDamage(dmg)
+  addLog(`${player.name.value} ${text}，造成 ${dmg} 點傷害！`)
+  monster.triggerShake()
 
-  monsterShake.value = true
-  setTimeout(() => { monsterShake.value = false }, 300)
-
-  if (monsterHp.value <= 0) {
-    monstersKilled.value++
-    addLog(`${monsterName.value} 被擊敗了！`)
-    if (Math.random() < 0.5) {
-      const loot = lootTable[randomInt(0, lootTable.length - 1)]
-      if (!weapons.value.includes(loot.type)) {
-        weapons.value.push(loot.type)
-        lootMessage.value = `獲得了 ${loot.name}！（${loot.type === 'bow' ? '弓' : loot.type === 'magic' ? '魔法' : '劍'}系武器）`
-      } else {
-        potions.value++
-        lootMessage.value = `獲得了 ${loot.name}...但已經有同類武器了，轉化為藥水 x1`
-      }
-      showLoot.value = true
-      addLog(lootMessage.value)
-    } else {
-      setTimeout(() => spawnMonster(), 800)
-    }
+  if (isDead) {
+    player.monstersKilled.value++
+    addLog(`${monster.name.value} 被擊敗了！`)
+    tryDropLoot()
     return
   }
 
   setTimeout(() => monsterTurn(), 500)
 }
 
-// ----- Monster attacks player -----
+// ----- Monster turn -----
 function monsterTurn() {
   if (gameOver.value) return
 
-  let rawDmg = randomInt(monsterAtk.value - 2, monsterAtk.value + 2)
-  let actualDmg = rawDmg - playerDef.value
+  const rawDmg = monster.calcDamage()
+  const { actualDmg, wasDefending } = player.takeDamage(rawDmg)
 
-  if (isDefending.value) {
-    actualDmg = Math.floor(actualDmg * 0.5)
-    addLog(`${playerName.value} 的防禦姿態減輕了傷害！`)
-    isDefending.value = false
+  if (wasDefending) {
+    addLog(`${player.name.value} 的防禦姿態減輕了傷害！`)
   }
 
-  actualDmg = Math.max(1, actualDmg)
-  playerHp.value = Math.max(0, playerHp.value - actualDmg)
+  addLog(`${monster.name.value} 攻擊了 ${player.name.value}，造成 ${actualDmg} 點傷害`)
+  player.triggerShake()
 
-  addLog(`${monsterName.value} 攻擊了 ${playerName.value}，造成 ${actualDmg} 點傷害`)
-
-  playerShake.value = true
-  setTimeout(() => { playerShake.value = false }, 300)
-
-  if (playerHp.value <= 0) {
+  if (player.hp.value <= 0) {
     gameOver.value = true
-    addLog(`${playerName.value} 倒下了... 遊戲結束`)
-    addLog(`共擊敗了 ${monstersKilled.value} 隻怪物`)
+    addLog(`${player.name.value} 倒下了... 遊戲結束`)
+    addLog(`共擊敗了 ${player.monstersKilled.value} 隻怪物`)
   }
 }
 
-// ----- Defend action -----
+// ----- Loot system -----
+function tryDropLoot() {
+  if (Math.random() < 0.5) {
+    const loot = lootTable[randomInt(0, lootTable.length - 1)]
+    const added = player.addWeapon(loot.type)
+    if (added) {
+      const strategy = weaponStrategies[loot.type]
+      lootMessage.value = `獲得了 ${loot.name}！（${strategy.name}系武器）`
+    } else {
+      player.addPotion()
+      lootMessage.value = `獲得了 ${loot.name}...但已經有同類武器了，轉化為藥水 x1`
+    }
+    showLoot.value = true
+    addLog(lootMessage.value)
+  } else {
+    setTimeout(() => spawnMonster(), 800)
+  }
+}
+
+// ----- Defend -----
 function doDefend() {
   if (gameOver.value || showLoot.value) return
-  isDefending.value = true
-  addLog(`${playerName.value} 擺出防禦姿態！`)
+  player.defend()
+  addLog(`${player.name.value} 擺出防禦姿態！`)
   setTimeout(() => monsterTurn(), 500)
 }
 
-// ----- Potion action -----
-function usePotion() {
+// ----- Use potion -----
+function onUsePotion() {
   if (gameOver.value || showLoot.value) return
-  if (potions.value <= 0) {
+  const result = player.usePotion()
+  if (result.empty) {
     addLog('沒有藥水了！')
     return
   }
-  potions.value--
-  const heal = 30
-  const oldHp = playerHp.value
-  playerHp.value = Math.min(playerMaxHp.value, playerHp.value + heal)
-  const actualHeal = playerHp.value - oldHp
-  addLog(`${playerName.value} 使用藥水，回復 ${actualHeal} HP！（剩餘 ${potions.value} 瓶）`)
+  addLog(`${player.name.value} 使用藥水，回復 ${result.healed} HP！（剩餘 ${result.remaining} 瓶）`)
   setTimeout(() => monsterTurn(), 500)
 }
 
 // ----- Weapon switch -----
-function switchWeapon(type) {
-  if (!weapons.value.includes(type)) return
-  currentWeapon.value = type
-  if (type === 'sword') {
-    addLog('切換武器：劍（平衡型）')
-  } else if (type === 'bow') {
-    addLog('切換武器：弓（高攻擊但不穩定）')
-  } else if (type === 'magic') {
-    addLog('切換武器：魔法（無視部分防禦）')
-  }
+function onSwitchWeapon(type) {
+  if (!player.switchWeapon(type)) return
+  const strategy = weaponStrategies[type]
+  addLog(`切換武器：${strategy.name}（${strategy.description}）`)
 }
 
-// ----- Dismiss loot and continue -----
+// ----- Continue after loot -----
 function continueBattle() {
   showLoot.value = false
   setTimeout(() => spawnMonster(), 300)
 }
 
-// ----- Start game -----
+// ----- Start / Restart -----
 function startGame() {
   gameStarted.value = true
-  playerHp.value = 100
-  playerMaxHp.value = 100
-  potions.value = 3
-  monstersKilled.value = 0
-  currentWeapon.value = 'sword'
-  weapons.value = ['sword']
-  battleLog.value = []
   gameOver.value = false
-  isDefending.value = false
+  battleLog.value = []
+  player.reset()
   addLog('=== 冒險開始！===')
   spawnMonster()
 }
 
-// ----- Restart -----
 function restartGame() {
   gameOver.value = false
   gameStarted.value = false
@@ -244,39 +170,36 @@ function restartGame() {
   <!-- Game screen -->
   <div v-else class="game-container">
     <div class="stats-bar">
-      <span>擊殺數：{{ monstersKilled }}</span>
-      <span>藥水：{{ potions }} 瓶</span>
+      <span>擊殺數：{{ player.monstersKilled.value }}</span>
+      <span>藥水：{{ player.potions.value }} 瓶</span>
     </div>
 
     <div class="battle-field">
-      <!-- Player card (component) -->
       <PlayerCard
-        :name="playerName"
-        :hp="playerHp"
-        :max-hp="playerMaxHp"
-        :base-atk="playerBaseAtk"
-        :def="playerDef"
-        :current-weapon="currentWeapon"
-        :weapons="weapons"
-        :potions="potions"
-        :is-defending="isDefending"
-        :shake="playerShake"
+        :name="player.name.value"
+        :hp="player.hp.value"
+        :max-hp="player.maxHp.value"
+        :base-atk="player.baseAtk.value"
+        :def="player.def.value"
+        :current-weapon="player.currentWeapon.value"
+        :weapons="player.weapons.value"
+        :potions="player.potions.value"
+        :is-defending="player.isDefending.value"
+        :shake="player.shake.value"
         @attack="doAttack"
         @defend="doDefend"
-        @use-potion="usePotion"
-        @switch-weapon="switchWeapon"
+        @use-potion="onUsePotion"
+        @switch-weapon="onSwitchWeapon"
       />
 
-      <!-- VS -->
       <div class="vs-divider">VS</div>
 
-      <!-- Monster card (component) -->
       <MonsterCard
-        :name="monsterName"
-        :hp="monsterHp"
-        :max-hp="monsterMaxHp"
-        :atk="monsterAtk"
-        :shake="monsterShake"
+        :name="monster.name.value"
+        :hp="monster.hp.value"
+        :max-hp="monster.maxHp.value"
+        :atk="monster.atk.value"
+        :shake="monster.shake.value"
       />
     </div>
 
@@ -289,11 +212,10 @@ function restartGame() {
     <!-- Game over -->
     <div v-if="gameOver" class="game-over">
       <h2>💀 遊戲結束</h2>
-      <p>你擊敗了 {{ monstersKilled }} 隻怪物</p>
+      <p>你擊敗了 {{ player.monstersKilled.value }} 隻怪物</p>
       <button class="btn btn-restart" @click="restartGame">重新開始</button>
     </div>
 
-    <!-- Battle log (component) -->
     <BattleLog :logs="battleLog" />
   </div>
 </template>
