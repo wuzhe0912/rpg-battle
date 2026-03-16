@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>設計模式：折扣計算器</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>折扣計算器</h1>
+
+    <section>
+      <h2>選擇商品</h2>
+      <div id="products" class="btn-group"></div>
+    </section>
+
+    <section>
+      <h2>會員類型</h2>
+      <div id="members" class="btn-group"></div>
+    </section>
+
+    <section class="result">
+      <div class="price-row">
+        <span>原價</span>
+        <span id="original-price">$0</span>
+      </div>
+      <div class="price-row">
+        <span id="discount-desc">無折扣</span>
+        <span id="final-price" class="final">$0</span>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

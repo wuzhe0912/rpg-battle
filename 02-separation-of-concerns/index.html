@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>關注點分離：商品搜尋</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>商品搜尋</h1>
+
+    <div class="search-bar">
+      <input type="text" id="search" placeholder="輸入關鍵字搜尋商品...">
+      <span id="count" class="count">6 / 6 件</span>
+    </div>
+
+    <div id="product-list" class="product-grid"></div>
+
+    <div class="log-section">
+      <h2>Event Log <button id="clear-log" class="clear-btn">清除</button></h2>
+      <div id="log" class="log"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
